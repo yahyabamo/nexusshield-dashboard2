@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase, EVENT_TYPES, SEVERITY } from '../supabaseClient'
 import { formatDistanceToNow, format } from 'date-fns'
 import { Download, X, Image, Filter } from 'lucide-react'
+import { useToast } from '../toastContext'
 
 export default function LiveFeedPage() {
     const [events, setEvents] = useState([])
@@ -12,6 +13,7 @@ export default function LiveFeedPage() {
     const [devices, setDevices] = useState([])
     const [filterDev, setFilterDev] = useState('all')
     const newEventIds = useRef(new Set())
+    const { addToast } = useToast()
 
     useEffect(() => {
         supabase.from('devices').select('id, name').then(({ data }) => setDevices(data || []))
@@ -35,6 +37,17 @@ export default function LiveFeedPage() {
                 if (data) {
                     newEventIds.current.add(data.id)
                     setEvents(prev => [data, ...prev].slice(0, 100))
+
+                    // Toast notification
+                    const et = EVENT_TYPES[data.event_type]
+                    addToast({
+                        type: data.severity,
+                        title: et?.label || data.event_type,
+                        message: data.devices?.name
+                            ? `Detected on ${data.devices.name}`
+                            : 'New security event',
+                    })
+
                     // Remove "new" highlight after 2s
                     setTimeout(() => {
                         newEventIds.current.delete(data.id)

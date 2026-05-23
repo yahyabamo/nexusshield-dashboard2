@@ -2,19 +2,82 @@ import { useState, useEffect } from 'react'
 import { supabase, EVENT_TYPES, SEVERITY } from '../supabaseClient'
 import { formatDistanceToNow } from 'date-fns'
 import { Activity, Camera, AlertTriangle, Clock } from 'lucide-react'
+import { useToast } from '../toastContext'
 
 export default function DashboardPage() {
     const [stats, setStats] = useState({ todayEvents: 0, activeDevices: 0, highSeverity: 0, lastEvent: null })
     const [recentEvents, setRecent] = useState([])
     const [devices, setDevices] = useState([])
     const [loading, setLoading] = useState(true)
+    const [channelStatus, setChannelStatus] = useState('CONNECTING')
+    const { addToast } = useToast()
 
     useEffect(() => {
         fetchAll()
-        // Refresh stats every 30 seconds
-        const interval = setInterval(fetchAll, 30000)
-        return () => clearInterval(interval)
-    }, [])
+
+        // Refresh device status every 60 seconds (lightweight)
+        const interval = setInterval(() => {
+            supabase.from('devices').select('*').then(({ data }) => {
+                if (data) {
+                    const activeCount = data.filter(d => d.status === 'online').length
+                    setDevices(data)
+                    setStats(prev => ({ ...prev, activeDevices: activeCount }))
+                }
+            })
+        }, 60000)
+
+        // ── Realtime: listen for new events ───────────────────────────────
+        const channel = supabase
+            .channel('dashboard-events')
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'events',
+            }, async (payload) => {
+                // Fetch the full row with joins so we have device name etc.
+                const { data: newEvent } = await supabase
+                    .from('events')
+                    .select('*, devices(name), snapshots(image_url)')
+                    .eq('id', payload.new.id)
+                    .single()
+
+                if (newEvent) {
+                    // Prepend to recent events list (keep max 8)
+                    setRecent(prev => [newEvent, ...prev].slice(0, 8))
+
+                    // Increment today counters
+                    const today = new Date(); today.setHours(0, 0, 0, 0)
+                    const isToday = new Date(newEvent.created_at) >= today
+                    setStats(prev => ({
+                        ...prev,
+                        todayEvents: isToday ? prev.todayEvents + 1 : prev.todayEvents,
+                        highSeverity: (isToday && newEvent.severity === 'high')
+                            ? prev.highSeverity + 1
+                            : prev.highSeverity,
+                        lastEvent: newEvent.created_at,
+                    }))
+
+                    // Toast notification
+                    const et = EVENT_TYPES[newEvent.event_type]
+                    addToast({
+                        type: newEvent.severity,
+                        title: et?.label || newEvent.event_type,
+                        message: newEvent.devices?.name
+                            ? `Detected on ${newEvent.devices.name}`
+                            : 'New security event',
+                    })
+                }
+            })
+            .subscribe((status, err) => {
+                console.log('[Realtime] dashboard-events status:', status, err ?? '')
+                setChannelStatus(status)
+            })
+
+        return () => {
+            clearInterval(interval)
+            supabase.removeChannel(channel)
+        }
+    }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
     async function fetchAll() {
         const today = new Date(); today.setHours(0, 0, 0, 0)

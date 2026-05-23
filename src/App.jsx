@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate, useLocati
 import { supabase } from './supabaseClient'
 import {
   LayoutDashboard, Radio, BarChart3, Settings,
-  Shield, LogOut, User, Wifi, WifiOff, Tv2
+  Shield, LogOut, User, Wifi, WifiOff, Tv2, History
 } from 'lucide-react'
 
 import LoginPage from './pages/LoginPage'
@@ -15,6 +15,7 @@ import MonitorPage from './pages/MonitorPage'
 
 // ── Auth Context ──────────────────────────────────────────────────────────
 import { AuthContext, useAuth } from './authContext'
+import { ToastProvider } from './toastContext'
 
 function AuthProvider({ children }) {
   const [session, setSession] = useState(undefined) // undefined = loading
@@ -46,8 +47,8 @@ function Protected({ children }) {
 // ── Layout (Sidebar + Topbar) ─────────────────────────────────────────────
 const NAV = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/live', icon: Radio, label: 'Live Feed' },
-  { to: '/monitor', icon: Tv2, label: 'Monitor' },
+  { to: '/history', icon: History, label: 'History' },
+  { to: '/live', icon: Tv2, label: 'Live' },
   { to: '/analytics', icon: BarChart3, label: 'Analytics' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ]
@@ -161,24 +162,26 @@ function Layout({ children }) {
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/*" element={
-            <Protected>
-              <Layout>
-                <Routes>
-                  <Route path="/" element={<DashboardPage />} />
-                  <Route path="/live" element={<LiveFeedPage />} />
-                  <Route path="/monitor" element={<MonitorPage />} />
-                  <Route path="/analytics" element={<AnalyticsPage />} />
-                  <Route path="/settings" element={<SettingsPage />} />
-                </Routes>
-              </Layout>
-            </Protected>
-          } />
-        </Routes>
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/*" element={
+              <Protected>
+                <Layout>
+                  <Routes>
+                    <Route path="/" element={<DashboardPage />} />
+                    <Route path="/history" element={<LiveFeedPage />} />
+                    <Route path="/live" element={<MonitorPage />} />
+                    <Route path="/analytics" element={<AnalyticsPage />} />
+                    <Route path="/settings" element={<SettingsPage />} />
+                  </Routes>
+                </Layout>
+              </Protected>
+            } />
+          </Routes>
+        </AuthProvider>
+      </ToastProvider>
     </BrowserRouter>
   )
 }
