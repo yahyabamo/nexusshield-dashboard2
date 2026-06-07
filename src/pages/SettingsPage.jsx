@@ -145,7 +145,7 @@ export default function SettingsPage() {
                         {filteredLogs.length === 0
                             ? <div className="empty-state">No logs found</div>
                             : (
-                                <table className="data-table">
+                                <div className="table-scroll"><table className="data-table">
                                     <thead>
                                         <tr>
                                             <th>Level</th>
@@ -182,7 +182,7 @@ export default function SettingsPage() {
                                             )
                                         })}
                                     </tbody>
-                                </table>
+                                </table></div>
                             )
                         }
                     </div>

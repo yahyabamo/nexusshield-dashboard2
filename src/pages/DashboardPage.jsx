@@ -153,7 +153,7 @@ export default function DashboardPage() {
                     {recentEvents.length === 0
                         ? <div className="empty-state">No events yet</div>
                         : (
-                            <table className="data-table">
+                            <div className="table-scroll"><table className="data-table">
                                 <thead>
                                     <tr>
                                         <th>Type</th>
@@ -189,7 +189,7 @@ export default function DashboardPage() {
                                         )
                                     })}
                                 </tbody>
-                            </table>
+                            </table></div>
                         )
                     }
                 </div>

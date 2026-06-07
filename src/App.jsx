@@ -67,6 +67,7 @@ function Layout({ children }) {
   const location = useLocation()
   const [realtimeOk, setRealtimeOk] = useState(true)
   const [profile, setProfile] = useState(null)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
     if (!session) return
@@ -79,6 +80,9 @@ function Layout({ children }) {
     return () => supabase.removeChannel(channel)
   }, [session])
 
+  // Close sidebar whenever route changes (mobile nav tap)
+  useEffect(() => { setSidebarOpen(false) }, [location.pathname])
+
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     navigate('/login')
@@ -86,8 +90,13 @@ function Layout({ children }) {
 
   return (
     <div className="layout">
+      {/* ── Backdrop (mobile only) ── */}
+      {sidebarOpen && (
+        <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} />
+      )}
+
       {/* ── Sidebar ── */}
-      <aside className="sidebar">
+      <aside className={`sidebar${sidebarOpen ? ' sidebar--open' : ''}`}>
         <div className="sidebar-logo">
           <div className="brand">
             <Shield size={13} style={{ display: 'inline', marginRight: 7 }} />
@@ -96,7 +105,7 @@ function Layout({ children }) {
           <div className="brand-sub">IoT Security Dashboard</div>
         </div>
 
-        <nav className="sidebar-nav">
+        <nav className="sidebar-nav" onClick={() => setSidebarOpen(false)}>
           <div className="nav-section-label">Navigation</div>
           {NAV.map(({ to, icon: Icon, label }) => (
             <NavLink
@@ -138,13 +147,23 @@ function Layout({ children }) {
       <div className="main-content">
         <header className="topbar">
           <div className="topbar-left">
+            {/* Hamburger — visible only on ≤ 1024px via CSS */}
+            <button
+              className="hamburger"
+              onClick={() => setSidebarOpen(o => !o)}
+              aria-label="Toggle navigation"
+            >
+              <span className="hamburger-line" />
+              <span className="hamburger-line" />
+              <span className="hamburger-line" />
+            </button>
             <h1 className="page-title">{PAGE_TITLES[location.pathname] || 'Dashboard'}</h1>
           </div>
           <div className="topbar-right">
             <div className="connection-badge">
               {realtimeOk
-                ? <><div className="connection-dot" />REALTIME CONNECTED</>
-                : <><div className="connection-dot offline" /><WifiOff size={12} /> DISCONNECTED</>
+                ? <><div className="connection-dot" /><span className="connection-label">REALTIME CONNECTED</span></>
+                : <><div className="connection-dot offline" /><WifiOff size={12} /><span className="connection-label"> DISCONNECTED</span></>
               }
             </div>
           </div>

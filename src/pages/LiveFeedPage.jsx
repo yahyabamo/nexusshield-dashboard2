@@ -133,7 +133,7 @@ export default function LiveFeedPage() {
                 ) : filtered.length === 0 ? (
                     <div className="empty-state">No events match your filters</div>
                 ) : (
-                    <table className="data-table">
+                    <div className="table-scroll"><table className="data-table">
                         <thead>
                             <tr>
                                 <th>Type</th>
@@ -189,7 +189,7 @@ export default function LiveFeedPage() {
                                 )
                             })}
                         </tbody>
-                    </table>
+                    </table></div>
                 )}
             </div>
 

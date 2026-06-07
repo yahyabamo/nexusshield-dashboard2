@@ -99,9 +99,29 @@ export default function MonitorPage() {
 
     const selectedDevice = devices.find(d => d.id === selectedId) || null
     const selectedConfig = selectedId ? configs[selectedId] : null
-    const isOnline = selectedDevice?.status === 'online'
+
+    // ── 3-state device status (same logic as Dashboard) ─────────────────────
+    // online  → status=online AND last_seen_at within 2 minutes
+    // stale   → status=online BUT last_seen_at > 2 minutes ago (lost power/crashed)
+    // offline → status=offline
+    const STALE_MS = 2 * 60 * 1000
+    const lastSeen = selectedDevice?.last_seen_at ? new Date(selectedDevice.last_seen_at) : null
+    const isRecentlySeen = lastSeen && (Date.now() - lastSeen.getTime()) <= STALE_MS
+
+    let deviceStatusKey = 'offline'
+    if (selectedDevice?.status === 'online' && isRecentlySeen) deviceStatusKey = 'online'
+    else if (selectedDevice?.status === 'online' && !isRecentlySeen) deviceStatusKey = 'stale'
+
+    const DEVICE_STATUS = {
+        online:  { label: 'Online',        color: 'var(--green)',      bg: 'rgba(16,185,129,0.12)', dot: 'var(--green)'       },
+        stale:   { label: 'Disconnected',  color: '#fbbf24',           bg: 'rgba(251,191,36,0.12)', dot: '#fbbf24'            },
+        offline: { label: 'Offline',       color: 'var(--text-muted)', bg: 'var(--bg-hover)',       dot: 'var(--text-muted)'  },
+    }
+    const deviceStatus = DEVICE_STATUS[deviceStatusKey]
+
+    const isOnline = deviceStatusKey === 'online'   // used by streamLive gate
     const hasStream = !!(selectedDevice?.stream_url)
-    const streamLive = hasStream && !streamError
+    const streamLive = hasStream && !streamError && isOnline
 
     if (loadingDevices) {
         return <div className="empty-state"><div className="spinner" /></div>
@@ -176,13 +196,7 @@ export default function MonitorPage() {
             )}
 
             {/* ── Two-column layout ────────────────────────────────────────── */}
-            <div style={{
-                display: 'grid',
-                gridTemplateColumns: isFullscreen ? '1fr' : '70% 1fr',
-                gap: 14,
-                flex: 1,
-                minHeight: 0,
-            }}>
+            <div className={`monitor-grid${isFullscreen ? ' fullscreen' : ''}`}>
 
                 {/* ── LEFT: Stream area ─────────────────────────────────── */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0 }}>
@@ -299,8 +313,8 @@ export default function MonitorPage() {
                             </div>
                         </div>
 
-                        <StatusPill label="Status" value={isOnline ? 'Online' : 'Offline'}
-                            color={isOnline ? 'var(--green)' : 'var(--text-muted)'} />
+                        <StatusPill label="Status" value={deviceStatus.label}
+                            color={deviceStatus.color} />
 
                         {selectedDevice?.last_seen_at && (
                             <StatusPill
@@ -336,13 +350,13 @@ export default function MonitorPage() {
                             <div className="card-header">
                                 <span className="card-title">Device Info</span>
                                 <span className="badge" style={{
-                                    color: isOnline ? 'var(--green)' : 'var(--text-muted)',
-                                    background: isOnline ? 'rgba(16,185,129,0.12)' : 'var(--bg-hover)',
+                                    color: deviceStatus.color,
+                                    background: deviceStatus.bg,
                                 }}>
                                     <span className="badge-dot" style={{
-                                        background: isOnline ? 'var(--green)' : 'var(--text-muted)',
+                                        background: deviceStatus.dot,
                                     }} />
-                                    {isOnline ? 'Online' : 'Offline'}
+                                    {deviceStatus.label}
                                 </span>
                             </div>
 
