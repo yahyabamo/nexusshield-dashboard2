@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
+import { enrichWithSeverity, MOTION_SEVERITY_META } from '../motionSeverity'
 import {
     LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
     XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts'
-import { format, subDays, eachDayOfInterval, startOfDay } from 'date-fns'
+import { format, subDays, eachDayOfInterval } from 'date-fns'
 
 const CHART_COLORS = ['#00e5ff', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
 const DAYS_OPTIONS = [7, 14, 30]
@@ -31,6 +32,8 @@ export default function AnalyticsPage() {
     const [peakData, setPeakData] = useState([])
     const [heatmapData, setHeatmap] = useState([])
     const [uptimeData, setUptime] = useState([])
+    const [severityData, setSeverityData] = useState({ high: 0, medium: 0, low: 0, total: 0 })
+    const [severityLineData, setSeverityLineData] = useState([])
 
     useEffect(() => { fetchAll() }, [days])
 
@@ -46,11 +49,14 @@ export default function AnalyticsPage() {
         const events = eventsRes.data || []
         const devices = devicesRes.data || []
 
+        // Enrich motion events with computed severity
+        const enriched = enrichWithSeverity(events)
+
         // ── 1. Events over time (line chart) ──────────────────────────────────
         const dayRange = eachDayOfInterval({ start: subDays(new Date(), days - 1), end: new Date() })
         const byDay = {}
         dayRange.forEach(d => { byDay[format(d, 'MMM d')] = 0 })
-        events.forEach(ev => {
+        enriched.forEach(ev => {
             const key = format(new Date(ev.created_at), 'MMM d')
             if (byDay[key] !== undefined) byDay[key]++
         })
@@ -58,7 +64,7 @@ export default function AnalyticsPage() {
 
         // ── 2. Event type breakdown (donut) ────────────────────────────────────
         const typeCounts = {}
-        events.forEach(ev => { typeCounts[ev.event_type] = (typeCounts[ev.event_type] || 0) + 1 })
+        enriched.forEach(ev => { typeCounts[ev.event_type] = (typeCounts[ev.event_type] || 0) + 1 })
         setDonutData(Object.entries(typeCounts).map(([name, value]) => ({
             name: name.replace('_', ' '),
             value,
@@ -66,7 +72,7 @@ export default function AnalyticsPage() {
 
         // ── 3. Peak hours (bar chart, 0-23) ───────────────────────────────────
         const hourCounts = Array(24).fill(0)
-        events.forEach(ev => { hourCounts[new Date(ev.created_at).getHours()]++ })
+        enriched.forEach(ev => { hourCounts[new Date(ev.created_at).getHours()]++ })
         setPeakData(hourCounts.map((count, hour) => ({
             hour: `${String(hour).padStart(2, '0')}:00`,
             count,
@@ -75,7 +81,7 @@ export default function AnalyticsPage() {
         // ── 4. Heatmap: day-of-week × hour ────────────────────────────────────
         const DAYS_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
         const grid = Array(7).fill(null).map(() => Array(24).fill(0))
-        events.forEach(ev => {
+        enriched.forEach(ev => {
             const d = new Date(ev.created_at)
             grid[d.getDay()][d.getHours()]++
         })
@@ -84,10 +90,25 @@ export default function AnalyticsPage() {
         // ── 5. Device uptime (from events / heartbeats count) ─────────────────
         const devEventCounts = {}
         devices.forEach(d => { devEventCounts[d.id] = { name: d.name, events: 0 } })
-        events.forEach(ev => {
+        enriched.forEach(ev => {
             if (devEventCounts[ev.device_id]) devEventCounts[ev.device_id].events++
         })
         setUptime(Object.values(devEventCounts).map(d => ({ name: d.name, events: d.events })))
+
+        // ── 6. Motion severity breakdown ──────────────────────────────────────
+        const motionEvents = enriched.filter(ev => ev._severity !== null)
+        const sevCounts = { high: 0, medium: 0, low: 0 }
+        motionEvents.forEach(ev => { sevCounts[ev._severity]++ })
+        setSeverityData({ ...sevCounts, total: motionEvents.length })
+
+        // Per-day severity stacked line
+        const byDaySev = {}
+        dayRange.forEach(d => { byDaySev[format(d, 'MMM d')] = { date: format(d, 'MMM d'), high: 0, medium: 0, low: 0 } })
+        motionEvents.forEach(ev => {
+            const key = format(new Date(ev.created_at), 'MMM d')
+            if (byDaySev[key]) byDaySev[key][ev._severity]++
+        })
+        setSeverityLineData(Object.values(byDaySev))
 
         setLoading(false)
     }
@@ -247,6 +268,68 @@ export default function AnalyticsPage() {
                         </ResponsiveContainer>
                     )
                 }
+            </div>
+
+            {/* Row 5: Motion Severity Breakdown */}
+            <div className="grid-2">
+                {/* Severity stat pills */}
+                <div className="card">
+                    <div className="card-header">
+                        <span className="card-title">Motion Severity Summary</span>
+                        <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+                            {severityData.total} motion events
+                        </span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        {[['high', 'High — Night (12am–6am)'], ['medium', 'Medium — Rapid Repeat (< 30s)'], ['low', 'Low — Normal']].map(([key, desc]) => {
+                            const meta = MOTION_SEVERITY_META[key]
+                            const count = severityData[key]
+                            const pct = severityData.total > 0 ? Math.round((count / severityData.total) * 100) : 0
+                            return (
+                                <div key={key}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                                        <span style={{ fontSize: 12, color: meta.color, fontWeight: 600 }}>{desc}</span>
+                                        <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+                                            {count} <span style={{ color: 'var(--text-muted)' }}>({pct}%)</span>
+                                        </span>
+                                    </div>
+                                    <div style={{ height: 6, borderRadius: 3, background: 'var(--bg-hover)', overflow: 'hidden' }}>
+                                        <div style={{
+                                            height: '100%', width: `${pct}%`,
+                                            background: meta.color,
+                                            borderRadius: 3,
+                                            transition: 'width 0.6s ease',
+                                        }} />
+                                    </div>
+                                </div>
+                            )
+                        })}
+                    </div>
+                </div>
+
+                {/* Severity over time stacked line */}
+                <div className="card">
+                    <div className="card-header">
+                        <span className="card-title">Severity Over Time</span>
+                    </div>
+                    {severityLineData.length === 0
+                        ? <div className="empty-state">No motion data</div>
+                        : (
+                            <ResponsiveContainer width="100%" height={200}>
+                                <LineChart data={severityLineData}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                                    <XAxis dataKey="date" tick={{ fontSize: 10, fontFamily: 'var(--font-mono)', fill: 'var(--text-muted)' }} />
+                                    <YAxis tick={{ fontSize: 10, fontFamily: 'var(--font-mono)', fill: 'var(--text-muted)' }} allowDecimals={false} />
+                                    <Tooltip {...tooltipStyle} />
+                                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, fontFamily: 'var(--font-mono)' }} />
+                                    <Line type="monotone" dataKey="high"   stroke="#f87171" strokeWidth={2} dot={false} name="High"   />
+                                    <Line type="monotone" dataKey="medium" stroke="#fbbf24" strokeWidth={2} dot={false} name="Medium" />
+                                    <Line type="monotone" dataKey="low"    stroke="#60a5fa" strokeWidth={2} dot={false} name="Low"    />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        )
+                    }
+                </div>
             </div>
         </div>
     )

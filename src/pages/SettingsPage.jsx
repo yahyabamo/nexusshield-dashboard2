@@ -1,71 +1,30 @@
 import { useState, useEffect } from 'react'
 import { supabase, LOG_LEVELS } from '../supabaseClient'
+import { enrichWithSeverity, MOTION_SEVERITY_META } from '../motionSeverity'
 import { useAuth } from '../authContext'
 import { format } from 'date-fns'
-import { Save, Camera, User, Terminal } from 'lucide-react'
+import { Save, User, Terminal } from 'lucide-react'
 
 export default function SettingsPage() {
     const { session } = useAuth()
-    const [devices, setDevices] = useState([])
-    const [configs, setConfigs] = useState({})   // { device_id: config }
     const [profile, setProfile] = useState({ full_name: '' })
     const [logs, setLogs] = useState([])
-    const [saving, setSaving] = useState({})   // { device_id: bool }
     const [savingProfile, setSavingProfile] = useState(false)
-    const [saved, setSaved] = useState({})   // { device_id: bool } for feedback
     const [logFilter, setLogFilter] = useState('all')
-    const [activeTab, setActiveTab] = useState('devices')
+    const [activeTab, setActiveTab] = useState('profile')
 
     useEffect(() => {
         fetchData()
     }, [])
 
     async function fetchData() {
-        const [devRes, cfgRes, profRes, logRes] = await Promise.all([
-            supabase.from('devices').select('*'),
-            supabase.from('device_config').select('*'),
+        const [profRes, logRes] = await Promise.all([
             supabase.from('profiles').select('*').eq('id', session.user.id).single(),
             supabase.from('system_logs').select('*, devices(name)').order('created_at', { ascending: false }).limit(100),
         ])
 
-        setDevices(devRes.data || [])
         setLogs(logRes.data || [])
-
-        // Map configs by device_id for easy lookup
-        const cfgMap = {}
-            ; (cfgRes.data || []).forEach(c => { cfgMap[c.device_id] = { ...c } })
-        setConfigs(cfgMap)
-
         if (profRes.data) setProfile(profRes.data)
-    }
-
-    function updateConfig(deviceId, field, value) {
-        setConfigs(prev => ({
-            ...prev,
-            [deviceId]: { ...prev[deviceId], [field]: value }
-        }))
-    }
-
-    async function saveConfig(deviceId) {
-        setSaving(p => ({ ...p, [deviceId]: true }))
-        const cfg = configs[deviceId]
-
-        const { error } = await supabase
-            .from('device_config')
-            .upsert({
-                device_id: deviceId,
-                sensitivity: cfg.sensitivity,
-                detection_cooldown: cfg.detection_cooldown,
-                alert_enabled: cfg.alert_enabled,
-                updated_at: new Date().toISOString(),
-                updated_by: session.user.id,
-            }, { onConflict: 'device_id' })
-
-        setSaving(p => ({ ...p, [deviceId]: false }))
-        if (!error) {
-            setSaved(p => ({ ...p, [deviceId]: true }))
-            setTimeout(() => setSaved(p => ({ ...p, [deviceId]: false })), 2000)
-        }
     }
 
     async function saveProfile() {
@@ -74,10 +33,16 @@ export default function SettingsPage() {
         setSavingProfile(false)
     }
 
-    const filteredLogs = logFilter === 'all' ? logs : logs.filter(l => l.log_level === logFilter)
+    // Attach computed severity to each log entry (shared utility)
+    const enrichedLogs = enrichWithSeverity(logs)
+
+    const filteredLogs = logFilter === 'all'
+        ? enrichedLogs
+        : logFilter === 'high' || logFilter === 'medium' || logFilter === 'low'
+            ? enrichedLogs.filter(l => l._severity === logFilter)
+            : enrichedLogs.filter(l => l.log_level === logFilter)
 
     const tabs = [
-        { id: 'devices', label: 'Device Config', icon: <Camera size={13} /> },
         { id: 'profile', label: 'Profile', icon: <User size={13} /> },
         { id: 'logs', label: 'System Logs', icon: <Terminal size={13} /> },
     ]
@@ -108,118 +73,6 @@ export default function SettingsPage() {
                 ))}
             </div>
 
-            {/* ── DEVICE CONFIG TAB ── */}
-            {activeTab === 'devices' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                    {devices.length === 0 && <div className="empty-state">No devices registered</div>}
-                    {devices.map(dev => {
-                        const cfg = configs[dev.id] || { sensitivity: 5, detection_cooldown: 15, alert_enabled: true }
-                        const isSaving = saving[dev.id]
-                        const wasSaved = saved[dev.id]
-
-                        return (
-                            <div key={dev.id} className="card">
-                                {/* Device header */}
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                        <div style={{
-                                            width: 36, height: 36, borderRadius: 10,
-                                            background: dev.status === 'online' ? 'rgba(16,185,129,0.1)' : 'var(--bg-hover)',
-                                            border: `1px solid ${dev.status === 'online' ? 'rgba(16,185,129,0.3)' : 'var(--border)'}`,
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        }}>
-                                            <Camera size={16} color={dev.status === 'online' ? 'var(--green)' : 'var(--text-muted)'} />
-                                        </div>
-                                        <div>
-                                            <div style={{ fontWeight: 700, fontSize: 14 }}>{dev.name}</div>
-                                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)' }}>
-                                                {dev.location || 'No location'} · {dev.id.slice(0, 8)}…
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <span className="badge" style={{
-                                        color: dev.status === 'online' ? 'var(--green)' : 'var(--text-muted)',
-                                        background: dev.status === 'online' ? 'rgba(16,185,129,0.12)' : 'var(--bg-hover)',
-                                    }}>
-                                        <span className="badge-dot" style={{ background: dev.status === 'online' ? 'var(--green)' : 'var(--text-muted)' }} />
-                                        {dev.status}
-                                    </span>
-                                </div>
-
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-                                    {/* Sensitivity slider */}
-                                    <div>
-                                        <label className="label">
-                                            Motion Sensitivity
-                                            <span style={{ color: 'var(--accent)', marginLeft: 8 }}>{cfg.sensitivity} / 10</span>
-                                        </label>
-                                        <input
-                                            type="range" min="1" max="10" step="1"
-                                            className="slider"
-                                            value={cfg.sensitivity}
-                                            onChange={e => updateConfig(dev.id, 'sensitivity', parseInt(e.target.value))}
-                                        />
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-                                            <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>Low</span>
-                                            <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>High</span>
-                                        </div>
-                                    </div>
-
-                                    {/* Cooldown */}
-                                    <div>
-                                        <label className="label">
-                                            Detection Cooldown
-                                            <span style={{ color: 'var(--accent)', marginLeft: 8 }}>{cfg.detection_cooldown}s</span>
-                                        </label>
-                                        <input
-                                            type="range" min="5" max="120" step="5"
-                                            className="slider"
-                                            value={cfg.detection_cooldown}
-                                            onChange={e => updateConfig(dev.id, 'detection_cooldown', parseInt(e.target.value))}
-                                        />
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-                                            <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>5s</span>
-                                            <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>120s</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Alert toggle + save */}
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 20 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                        <label className="toggle">
-                                            <input
-                                                type="checkbox"
-                                                checked={cfg.alert_enabled}
-                                                onChange={e => updateConfig(dev.id, 'alert_enabled', e.target.checked)}
-                                            />
-                                            <span className="toggle-track" />
-                                        </label>
-                                        <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                                            {cfg.alert_enabled ? 'Alerts enabled' : 'Alerts disabled'}
-                                        </span>
-                                    </div>
-
-                                    <button
-                                        className="btn btn-primary"
-                                        onClick={() => saveConfig(dev.id)}
-                                        disabled={isSaving}
-                                        style={{ opacity: isSaving ? 0.7 : 1 }}
-                                    >
-                                        {isSaving ? (
-                                            <><div className="spinner" style={{ width: 13, height: 13, borderWidth: 2, borderTopColor: '#000' }} /> Saving...</>
-                                        ) : wasSaved ? (
-                                            '✓ Saved'
-                                        ) : (
-                                            <><Save size={13} /> Save Config</>
-                                        )}
-                                    </button>
-                                </div>
-                            </div>
-                        )
-                    })}
-                </div>
-            )}
 
             {/* ── PROFILE TAB ── */}
             {activeTab === 'profile' && (
@@ -259,24 +112,28 @@ export default function SettingsPage() {
             {activeTab === 'logs' && (
                 <div>
                     <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-                        {['all', 'info', 'warn', 'error'].map(level => (
+                        {[
+                            { key: 'all',    label: 'All',    color: 'var(--text-secondary)' },
+                            { key: 'high',   label: 'High',   color: '#f87171' },
+                            { key: 'medium', label: 'Medium', color: '#fbbf24' },
+                            { key: 'low',    label: 'Low',    color: '#60a5fa' },
+                            { key: 'info',   label: 'Info',   color: '#60a5fa' },
+                            { key: 'warn',   label: 'Warn',   color: 'var(--yellow)' },
+                            { key: 'error',  label: 'Error',  color: 'var(--red)' },
+                        ].map(({ key, label, color }) => (
                             <button
-                                key={level}
-                                onClick={() => setLogFilter(level)}
+                                key={key}
+                                onClick={() => setLogFilter(key)}
                                 className="btn"
                                 style={{
                                     padding: '5px 12px', fontSize: 11, textTransform: 'uppercase',
                                     fontFamily: 'var(--font-mono)',
-                                    background: logFilter === level ? 'var(--accent-dim)' : 'transparent',
-                                    border: `1px solid ${logFilter === level ? 'rgba(0,229,255,0.3)' : 'var(--border-accent)'}`,
-                                    color: logFilter === level ? 'var(--accent)'
-                                        : level === 'error' ? 'var(--red)'
-                                            : level === 'warn' ? 'var(--yellow)'
-                                                : level === 'info' ? '#60a5fa'
-                                                    : 'var(--text-secondary)',
+                                    background: logFilter === key ? 'var(--accent-dim)' : 'transparent',
+                                    border: `1px solid ${logFilter === key ? 'rgba(0,229,255,0.3)' : 'var(--border-accent)'}`,
+                                    color: logFilter === key ? 'var(--accent)' : color,
                                 }}
                             >
-                                {level}
+                                {label}
                             </button>
                         ))}
                         <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)', alignSelf: 'center' }}>
@@ -299,7 +156,9 @@ export default function SettingsPage() {
                                     </thead>
                                     <tbody>
                                         {filteredLogs.map(log => {
-                                            const lc = LOG_LEVELS[log.log_level] || { color: '#fff' }
+                                            const sev = log._severity ? MOTION_SEVERITY_META[log._severity] : null
+                                            const lc  = sev || LOG_LEVELS[log.log_level] || { color: '#fff' }
+                                            const displayLabel = sev ? sev.label : log.log_level
                                             return (
                                                 <tr key={log.id}>
                                                     <td>
@@ -307,7 +166,7 @@ export default function SettingsPage() {
                                                             color: lc.color, background: lc.color + '18',
                                                             textTransform: 'uppercase', fontSize: 10, letterSpacing: '0.1em',
                                                         }}>
-                                                            {log.log_level}
+                                                            {displayLabel}
                                                         </span>
                                                     </td>
                                                     <td style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-secondary)' }}>

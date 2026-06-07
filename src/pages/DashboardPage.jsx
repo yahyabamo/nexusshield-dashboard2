@@ -227,7 +227,26 @@ function StatCard({ label, value, sub, color, icon }) {
 }
 
 function DeviceStatusRow({ device }) {
-    const isOnline = device.status === 'online'
+    // Three-state status:
+    //   online  → status=online  AND last_seen_at within the last 2 minutes
+    //   stale   → status=online  BUT last_seen_at is > 2 minutes ago (lost power / crashed)
+    //   offline → status=offline (or no last_seen_at)
+    const STALE_MS = 2 * 60 * 1000   // 2 minutes
+    const lastSeen = device.last_seen_at ? new Date(device.last_seen_at) : null
+    const isRecentlySeen = lastSeen && (Date.now() - lastSeen.getTime()) <= STALE_MS
+
+    let statusKey
+    if (device.status === 'online' && isRecentlySeen) statusKey = 'online'
+    else if (device.status === 'online' && !isRecentlySeen) statusKey = 'stale'
+    else statusKey = 'offline'
+
+    const STATUS_STYLE = {
+        online:  { label: 'Online',       color: 'var(--green)',    dot: 'var(--green)',    bg: 'rgba(16,185,129,0.12)',  icon: 'var(--green)'    },
+        stale:   { label: 'Disconnected', color: '#fbbf24',         dot: '#fbbf24',         bg: 'rgba(251,191,36,0.12)', icon: '#fbbf24'         },
+        offline: { label: 'Offline',      color: 'var(--text-muted)', dot: 'var(--text-muted)', bg: 'var(--bg-hover)',    icon: 'var(--text-muted)' },
+    }
+    const s = STATUS_STYLE[statusKey]
+
     return (
         <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -239,11 +258,11 @@ function DeviceStatusRow({ device }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{
                     width: 32, height: 32, borderRadius: 8,
-                    background: isOnline ? 'rgba(16,185,129,0.1)' : 'var(--bg-hover)',
-                    border: `1px solid ${isOnline ? 'rgba(16,185,129,0.3)' : 'var(--border)'}`,
+                    background: statusKey === 'online' ? 'rgba(16,185,129,0.1)' : statusKey === 'stale' ? 'rgba(251,191,36,0.1)' : 'var(--bg-hover)',
+                    border: `1px solid ${statusKey === 'online' ? 'rgba(16,185,129,0.3)' : statusKey === 'stale' ? 'rgba(251,191,36,0.3)' : 'var(--border)'}`,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                    <Camera size={14} color={isOnline ? 'var(--green)' : 'var(--text-muted)'} />
+                    <Camera size={14} color={s.icon} />
                 </div>
                 <div>
                     <div style={{ fontSize: 13, fontWeight: 600 }}>{device.name}</div>
@@ -253,16 +272,13 @@ function DeviceStatusRow({ device }) {
                 </div>
             </div>
             <div style={{ textAlign: 'right' }}>
-                <span className="badge" style={{
-                    color: isOnline ? 'var(--green)' : 'var(--text-muted)',
-                    background: isOnline ? 'rgba(16,185,129,0.12)' : 'var(--bg-hover)',
-                }}>
-                    <span className="badge-dot" style={{ background: isOnline ? 'var(--green)' : 'var(--text-muted)' }} />
-                    {isOnline ? 'Online' : 'Offline'}
+                <span className="badge" style={{ color: s.color, background: s.bg }}>
+                    <span className="badge-dot" style={{ background: s.dot }} />
+                    {s.label}
                 </span>
-                {device.last_seen_at && (
+                {lastSeen && (
                     <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', marginTop: 3 }}>
-                        {formatDistanceToNow(new Date(device.last_seen_at), { addSuffix: true })}
+                        {formatDistanceToNow(lastSeen, { addSuffix: true })}
                     </div>
                 )}
             </div>
