@@ -3,6 +3,7 @@ import { supabase, EVENT_TYPES, SEVERITY } from '../supabaseClient'
 import { formatDistanceToNow, format } from 'date-fns'
 import { Download, X, Image, Filter } from 'lucide-react'
 import { useToast } from '../toastContext'
+import { computeMotionSeverity, MOTION_SEVERITY_META } from '../motionSeverity'
 
 export default function LiveFeedPage() {
     const [events, setEvents] = useState([])
@@ -146,7 +147,11 @@ export default function LiveFeedPage() {
                         <tbody>
                             {filtered.map(ev => {
                                 const et = EVENT_TYPES[ev.event_type] || { label: ev.event_type, color: '#fff' }
-                                const sv = SEVERITY[ev.severity] || SEVERITY.low
+                                // Use time-based motion severity if applicable (e.g. HIGH after midnight)
+                                const motionSev = computeMotionSeverity(ev, events)
+                                const sv = motionSev
+                                    ? MOTION_SEVERITY_META[motionSev]
+                                    : (SEVERITY[ev.severity] || SEVERITY.low)
                                 const img = ev.snapshots?.[0]?.image_url
                                 const isNew = newEventIds.current.has(ev.id)
                                 return (

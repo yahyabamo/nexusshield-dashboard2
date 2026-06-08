@@ -73,7 +73,7 @@ export default function LoginPage() {
                     }}>
                         <Shield size={24} color="var(--accent)" />
                     </div>
-                    <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: '0.05em' }}>SecureWatch</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: '0.05em' }}>nexusshield</div>
                     <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', marginTop: 4, letterSpacing: '0.15em' }}>
                         IoT SECURITY DASHBOARD
                     </div>

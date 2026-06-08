@@ -3,6 +3,7 @@ import { supabase, EVENT_TYPES, SEVERITY } from '../supabaseClient'
 import { formatDistanceToNow } from 'date-fns'
 import { Activity, Camera, AlertTriangle, Clock } from 'lucide-react'
 import { useToast } from '../toastContext'
+import { computeMotionSeverity, MOTION_SEVERITY_META } from '../motionSeverity'
 
 export default function DashboardPage() {
     const [stats, setStats] = useState({ todayEvents: 0, activeDevices: 0, highSeverity: 0, lastEvent: null })
@@ -165,7 +166,10 @@ export default function DashboardPage() {
                                 <tbody>
                                     {recentEvents.map(ev => {
                                         const et = EVENT_TYPES[ev.event_type] || { label: ev.event_type, color: '#fff' }
-                                        const sv = SEVERITY[ev.severity] || SEVERITY.low
+                                        const motionSev = computeMotionSeverity(ev, recentEvents)
+                                        const sv = motionSev
+                                            ? MOTION_SEVERITY_META[motionSev]
+                                            : (SEVERITY[ev.severity] || SEVERITY.low)
                                         return (
                                             <tr key={ev.id}>
                                                 <td>

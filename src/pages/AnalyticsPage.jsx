@@ -95,16 +95,16 @@ export default function AnalyticsPage() {
         })
         setUptime(Object.values(devEventCounts).map(d => ({ name: d.name, events: d.events })))
 
-        // ── 6. Motion severity breakdown ──────────────────────────────────────
-        const motionEvents = enriched.filter(ev => ev._severity !== null)
+        // ── 6. Security event severity breakdown (all classifiable events) ────────
+        const securityEvents = enriched.filter(ev => ev._severity !== null)
         const sevCounts = { high: 0, medium: 0, low: 0 }
-        motionEvents.forEach(ev => { sevCounts[ev._severity]++ })
-        setSeverityData({ ...sevCounts, total: motionEvents.length })
+        securityEvents.forEach(ev => { sevCounts[ev._severity]++ })
+        setSeverityData({ ...sevCounts, total: securityEvents.length })
 
         // Per-day severity stacked line
         const byDaySev = {}
         dayRange.forEach(d => { byDaySev[format(d, 'MMM d')] = { date: format(d, 'MMM d'), high: 0, medium: 0, low: 0 } })
-        motionEvents.forEach(ev => {
+        securityEvents.forEach(ev => {
             const key = format(new Date(ev.created_at), 'MMM d')
             if (byDaySev[key]) byDaySev[key][ev._severity]++
         })
@@ -270,18 +270,18 @@ export default function AnalyticsPage() {
                 }
             </div>
 
-            {/* Row 5: Motion Severity Breakdown */}
+            {/* Row 5: Security Event Severity Breakdown */}
             <div className="grid-2">
                 {/* Severity stat pills */}
                 <div className="card">
                     <div className="card-header">
-                        <span className="card-title">Motion Severity Summary</span>
+                        <span className="card-title">Security Event Severity</span>
                         <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
-                            {severityData.total} motion events
+                            {severityData.total} classified events
                         </span>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                        {[['high', 'High — Night (12am–6am)'], ['medium', 'Medium — Rapid Repeat (< 30s)'], ['low', 'Low — Normal']].map(([key, desc]) => {
+                        {[['high', 'High — Night (00:00–05:59)'], ['medium', 'Medium — Rapid Repeat (< 30s)'], ['low', 'Low — Normal']].map(([key, desc]) => {
                             const meta = MOTION_SEVERITY_META[key]
                             const count = severityData[key]
                             const pct = severityData.total > 0 ? Math.round((count / severityData.total) * 100) : 0

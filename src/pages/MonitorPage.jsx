@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase, EVENT_TYPES, SEVERITY } from '../supabaseClient'
 import { formatDistanceToNow } from 'date-fns'
 import { Maximize2, Minimize2, Camera, Wifi } from 'lucide-react'
+import { computeMotionSeverity, MOTION_SEVERITY_META } from '../motionSeverity'
 
 export default function MonitorPage() {
     const [devices, setDevices] = useState([])
@@ -464,7 +465,10 @@ export default function MonitorPage() {
                                 ) : (
                                     events.map(ev => {
                                         const et = EVENT_TYPES[ev.event_type] || { label: ev.event_type, color: 'var(--text-muted)' }
-                                        const sv = SEVERITY[ev.severity] || SEVERITY.low
+                                        const motionSev = computeMotionSeverity(ev, events)
+                                        const sv = motionSev
+                                            ? MOTION_SEVERITY_META[motionSev]
+                                            : (SEVERITY[ev.severity] || SEVERITY.low)
                                         return (
                                             <div key={ev.id} className="new-row" style={{
                                                 display: 'flex',

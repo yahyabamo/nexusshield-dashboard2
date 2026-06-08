@@ -19,7 +19,7 @@ export default function SettingsPage() {
 
     async function fetchData() {
         const [profRes, logRes] = await Promise.all([
-            supabase.from('profiles').select('*').eq('id', session.user.id).single(),
+            supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle(),
             supabase.from('system_logs').select('*, devices(name)').order('created_at', { ascending: false }).limit(100),
         ])
 

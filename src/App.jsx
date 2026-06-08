@@ -71,7 +71,7 @@ function Layout({ children }) {
 
   useEffect(() => {
     if (!session) return
-    supabase.from('profiles').select('full_name, role').eq('id', session.user.id).single()
+    supabase.from('profiles').select('full_name, role').eq('id', session.user.id).maybeSingle()
       .then(({ data }) => setProfile(data))
 
     // Monitor realtime connection
@@ -100,7 +100,7 @@ function Layout({ children }) {
         <div className="sidebar-logo">
           <div className="brand">
             <Shield size={13} style={{ display: 'inline', marginRight: 7 }} />
-            SecureWatch
+            nexusshield
           </div>
           <div className="brand-sub">IoT Security Dashboard</div>
         </div>

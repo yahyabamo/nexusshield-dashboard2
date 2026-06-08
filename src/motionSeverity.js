@@ -1,12 +1,10 @@
-// ── Shared motion-severity classifier ─────────────────────────────────────
-// Rules (only for entries whose message / event_type indicates motion):
-//   HIGH   → logged between 00:00 and 05:59  (midnight-6 am)
-//   MEDIUM → another motion from the same device within 30 seconds
+// ── Shared event-severity classifier ─────────────────────────────────────
+// Rules apply to ALL security events (motion, door, person_detected, etc.):
+//   HIGH   → logged between 00:00 and 05:59  (midnight–6 am)
+//   MEDIUM → another event from the same device within 30 seconds
 //   LOW    → everything else
 //
-// Returns 'high' | 'medium' | 'low' | null
-// null means the entry is NOT a motion event — callers should fall back to
-// the raw severity / log_level stored in the database.
+// Returns 'high' | 'medium' | 'low'
 
 export const MOTION_SEVERITY_META = {
     high:   { label: 'High',   color: '#f87171', bg: 'rgba(248,113,113,0.12)' },
@@ -14,26 +12,32 @@ export const MOTION_SEVERITY_META = {
     low:    { label: 'Low',    color: '#60a5fa', bg: 'rgba(96,165,250,0.12)'  },
 }
 
+// Security event types that should get time-based severity classification
+const SECURITY_EVENT_TYPES = new Set([
+    'motion',
+    'door',
+    'person_detected',
+    'system_error',
+])
+
 /**
- * Determine whether an entry represents a motion event.
- * Works for both `events` rows (event_type field) and
- * `system_logs` rows (message field).
+ * Determine whether an entry is a classifiable security event.
  */
-function isMotionEntry(entry) {
-    if (entry.event_type === 'motion') return true
+function isSecurityEntry(entry) {
+    if (entry.event_type && SECURITY_EVENT_TYPES.has(entry.event_type)) return true
     if (typeof entry.message === 'string' &&
         entry.message.toLowerCase().includes('motion')) return true
     return false
 }
 
 /**
- * Compute a motion severity for a single entry given the full list.
+ * Compute severity for any security event given the full list.
  * @param {object} entry  - the event or log row
  * @param {object[]} all  - full array of event/log rows for clustering
- * @returns {'high'|'medium'|'low'|null}
+ * @returns {'high'|'medium'|'low'|null}  null = not a classifiable event
  */
-export function computeMotionSeverity(entry, all) {
-    if (!isMotionEntry(entry)) return null
+export function computeEventSeverity(entry, all) {
+    if (!isSecurityEntry(entry)) return null
 
     const ts   = new Date(entry.created_at)
     const hour = ts.getHours()
@@ -41,11 +45,11 @@ export function computeMotionSeverity(entry, all) {
     // HIGH — night window 00:00 – 05:59
     if (hour >= 0 && hour < 6) return 'high'
 
-    // MEDIUM — another motion on the same device within 30 s
+    // MEDIUM — another event on the same device within 30 s
     const WINDOW_MS = 30_000
     const hasCluster = all.some(other =>
         other.id !== entry.id &&
-        isMotionEntry(other) &&
+        isSecurityEntry(other) &&
         other.device_id === entry.device_id &&
         Math.abs(new Date(other.created_at) - ts) <= WINDOW_MS
     )
@@ -54,20 +58,23 @@ export function computeMotionSeverity(entry, all) {
     return 'low'
 }
 
+// Kept for backward-compat with existing callers
+export const computeMotionSeverity = computeEventSeverity
+
 /**
  * Enrich an array of entries with a `_severity` field.
- * Non-motion entries get `_severity = null`.
+ * Non-security entries get `_severity = null`.
  */
 export function enrichWithSeverity(entries) {
     return entries.map(e => ({
         ...e,
-        _severity: computeMotionSeverity(e, entries),
+        _severity: computeEventSeverity(e, entries),
     }))
 }
 
 /**
  * Return the display meta { label, color, bg } for an entry.
- * Falls back to a raw-level lookup via the fallbackMap if not a motion entry.
+ * Falls back to a raw-level lookup via the fallbackMap if not a security entry.
  *
  * @param {object} entry        - enriched entry (has _severity)
  * @param {object} fallbackMap  - e.g. SEVERITY or LOG_LEVELS from supabaseClient
